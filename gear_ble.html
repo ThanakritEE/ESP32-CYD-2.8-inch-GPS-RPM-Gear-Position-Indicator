@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Strada 4M40 CYD-Style Cluster (BLE)</title>
+  <style>
+    :root {
+      --bg: #080a0f;
+      --card: #10141d;
+      --border: #262c3d;
+      --cyan: #00d8ff;
+      --green: #00e676;
+      --amber: #ffab00;
+      --red: #ff2a55;
+      --text: #ffffff;
+      --muted: #7b849b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 12px;
+      user-select: none;
+    }
+
+    /* กรอบหน้าปัดแนวนอนสัดส่วนเดียวกับจอ CYD 2.8" */
+    .cyd-screen {
+      width: 100%;
+      max-width: 780px;
+      background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-radius: 18px;
+      padding: 8px 10px 10px;
+      box-shadow: 0 18px 45px rgba(0, 0, 0, 0.85);
+    }
+
+    /* 1. แถบสถานะด้านบนสุด: วันที่ เวลา และขีดสัญญาณ GPS */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 5px 12px;
+      margin-bottom: 6px;
+      font-variant-numeric: tabular-nums;
+    }
+    .dt-left {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+    .date-txt { font-size: 13px; color: var(--muted); font-weight: 700; }
+    .time-txt { font-size: 15px; color: #fff; font-weight: 800; letter-spacing: 0.5px; }
+    .src-tag {
+      font-size: 9px;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: #1b2232;
+      color: var(--cyan);
+      font-weight: 700;
+    }
+
+    .gps-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .gps-txt { font-size: 13px; font-weight: 800; color: var(--red); }
+    .sig-bars { display: flex; align-items: flex-end; gap: 3px; height: 16px; }
+    .bar { width: 5px; background: #262c3d; border-radius: 1.5px; transition: background 0.2s; }
+    .bar:nth-child(1) { height: 4px; }
+    .bar:nth-child(2) { height: 7px; }
+    .bar:nth-child(3) { height: 10px; }
+    .bar:nth-child(4) { height: 13px; }
+    .bar:nth-child(5) { height: 16px; }
+    .bar.red { background: var(--red); }
+    .bar.amber { background: var(--amber); }
+    .bar.green { background: var(--green); box-shadow: 0 0 6px rgba(0, 230, 118, 0.5); }
+
+    /* 2. แถบไฟ Shift Light 10 ดวงตรงกลาง */
+    .shift-row {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 7px;
+    }
+    .shift-lights {
+      display: grid;
+      grid-template-columns: repeat(10, 1fr);
+      gap: 5px;
+      width: 52%;
+      min-width: 240px;
+    }
+    .led {
+      height: 8px;
+      border-radius: 2px;
+      background: #181e2c;
+      transition: background 0.06s;
+    }
+    .led.g { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .led.a { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+    .led.r { background: var(--red); box-shadow: 0 0 8px var(--red); }
+    .shift-flash .led { background: var(--red) !important; box-shadow: 0 0 10px var(--red); }
+
+    /* 3. พื้นที่หลัก 3 คอลัมน์แนวนอน */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1.46fr 1fr 0.78fr;
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 8px 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+      min-height: 220px;
+    }
+    .card.cal-active { border: 1.5px solid var(--amber); }
+
+    /* คอลัมน์ซ้าย: เกจวัดรอบ 4M40 */
+    .rpm-box {
+      position: relative;
+      width: 100%;
+      max-width: 215px;
+      aspect-ratio: 200 / 172;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 2px;
+    }
+    .rpm-svg { width: 100%; height: 100%; overflow: visible; }
+    .rpm-center {
+      position: absolute;
+      top: 56%;
+      transform: translateY(-50%);
+      text-align: center;
+    }
+    .rpm-num {
+      font-size: clamp(28px, 4.5vw, 38px);
+      font-weight: 900;
+      line-height: 1;
+      color: #fff;
+      font-variant-numeric: tabular-nums;
+    }
+    .rpm-sub { font-size: 10px; color: var(--muted); font-weight: 700; margin-top: 4px; }
+    .engine-label {
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--amber);
+      letter-spacing: 0.8px;
+      margin-bottom: 2px;
+    }
+
+    /* คอลัมน์กลาง: ความเร็ว GPS */
+    .lbl-top { font-size: 11px; color: var(--muted); font-weight: 700; letter-spacing: 0.8px; margin-top: 2px; }
+    .speed-num {
+      font-size: clamp(54px, 8.5vw, 74px);
+      font-weight: 900;
+      line-height: 0.95;
+      color: #fff;
+      font-variant-numeric: tabular-nums;
+    }
+    .speed-unit { font-size: 13px; font-weight: 800; color: var(--cyan); letter-spacing: 1.5px; }
+    .speed-footer {
+      width: 82%;
+      border-top: 1px solid var(--border);
+      padding-top: 6px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    /* คอลัมน์ขวา: ตำแหน่งเกียร์ + ผัง H-Pattern */
+    .gear-num {
+      font-size: clamp(48px, 7.5vw, 64px);
+      font-weight: 900;
+      line-height: 0.95;
+      color: var(--green);
+      transition: color 0.15s;
+    }
+    .cal-hint {
+      font-size: 10px;
+      color: var(--amber);
+      font-weight: 800;
+      display: none;
+    }
+    .h-svg {
+      width: 96px;
+      height: 82px;
+      margin-bottom: 2px;
+    }
+    .h-track { stroke: #2f374b; stroke-width: 3; stroke-linecap: round; }
+    .h-circle { fill: #1c2230; transition: all 0.12s; }
+    .h-text { fill: #7b849b; font-size: 10px; font-weight: 800; text-anchor: middle; dominant-baseline: central; }
+
+    /* แถบปุ่มควบคุมด้านล่าง */
+    .controls {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+      max-width: 780px;
+      margin-top: 8px;
+    }
+    .btn {
+      flex: 1;
+      padding: 10px 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--card);
+      color: #e2e8f0;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+    .btn-ble { background: #1d4ed8; border-color: #2563eb; color: #fff; flex: 1.8; }
+    .btn-ble.connected { background: #047857; border-color: #059669; }
+    .btn-demo.active { background: #b45309; border-color: #d97706; color: #fff; }
+    .btn:active { transform: scale(0.98); }
+
+    /* แถบแจ้งสถานะการเชื่อมต่อ BLE */
+    .status-bar {
+      width: 100%;
+      max-width: 780px;
+      margin-top: 6px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      background: #10141d;
+      border: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--muted);
+      text-align: center;
+    }
+    .status-bar.err { color: #ff6b81; border-color: #581322; background: #1a0b10; }
+    .status-bar.ok { color: var(--green); border-color: #064e3b; }
+  </style>
+</head>
+<body>
+
+  <div class="cyd-screen">
+    <!-- แถบสถานะบน: วันที่ เวลา และสัญญาณ GPS -->
+    <div class="top-bar">
+      <div class="dt-left">
+        <span id="dateTxt" class="date-txt">--/--/----</span>
+        <span id="timeTxt" class="time-txt">--:--:--</span>
+        <span id="srcTag" class="src-tag">SYS</span>
+      </div>
+      <div class="gps-right">
+        <span id="gpsTxt" class="gps-txt">GPS 0</span>
+        <div id="sigBars" class="sig-bars">
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- แถบไฟเตือนเปลี่ยนเกียร์ Shift Light -->
+    <div class="shift-row">
+      <div id="shiftBar" class="shift-lights">
+        <div class="led"></div><div class="led"></div><div class="led"></div>
+        <div class="led"></div><div class="led"></div><div class="led"></div>
+        <div class="led"></div><div class="led"></div><div class="led"></div>
+        <div class="led"></div>
+      </div>
+    </div>
+
+    <!-- กริด 3 คอลัมน์แนวนอน -->
+    <div class="main-grid">
+      <!-- 1. ซ้าย: เกจวัดรอบ 4M40 -->
+      <div class="card">
+        <div class="rpm-box">
+          <svg class="rpm-svg" viewBox="0 0 200 172">
+            <path d="M 49.1 145.9 A 72 72 0 1 1 150.9 145.9" fill="none" stroke="#212634" stroke-width="14" stroke-linecap="butt"/>
+            <path d="M 172 97.3 A 72 72 0 0 1 150.9 145.9" fill="none" stroke="#581322" stroke-width="14" stroke-linecap="butt"/>
+            <path id="rpmArc" d="M 49.1 145.9 A 72 72 0 1 1 150.9 145.9" fill="none" stroke="#00d8ff" stroke-width="14" stroke-linecap="butt"
+                  stroke-dasharray="339.3" stroke-dashoffset="339.3"/>
+            <text x="66" y="131" fill="#7b849b" font-size="11" font-weight="800" text-anchor="middle">0</text>
+            <text x="53" y="90" fill="#7b849b" font-size="11" font-weight="800" text-anchor="middle">1</text>
+            <text x="78" y="55" fill="#7b849b" font-size="11" font-weight="800" text-anchor="middle">2</text>
+            <text x="122" y="55" fill="#7b849b" font-size="11" font-weight="800" text-anchor="middle">3</text>
+            <text x="147" y="90" fill="#ff2a55" font-size="11" font-weight="800" text-anchor="middle">4</text>
+            <text x="134" y="131" fill="#ff2a55" font-size="11" font-weight="800" text-anchor="middle">5</text>
+          </svg>
+          <div class="rpm-center">
+            <div id="rpmVal" class="rpm-num">0</div>
+            <div class="rpm-sub">x1000 RPM</div>
+          </div>
+        </div>
+        <div class="engine-label">4M40 TURBO</div>
+      </div>
+
+      <!-- 2. กลาง: ความเร็ว GPS -->
+      <div class="card">
+        <div class="lbl-top">GPS SPEED</div>
+        <div id="speedVal" class="speed-num">0</div>
+        <div class="speed-unit">KM / H</div>
+        <div class="speed-footer" onclick="resetMax()" title="แตะเพื่อรีเซ็ตความเร็วสูงสุด">
+          MAX: <span id="maxVal">0</span>
+        </div>
+      </div>
+
+      <!-- 3. ขวา: ตำแหน่งเกียร์ + ผัง H-Pattern -->
+      <div id="gearCard" class="card">
+        <div id="gearTitle" class="lbl-top">GEAR</div>
+        <div id="gearVal" class="gear-num">N</div>
+        <div id="calHint" class="cal-hint">PRESS BOOT</div>
+
+        <svg class="h-svg" viewBox="0 0 100 84">
+          <line x1="22" y1="16" x2="22" y2="68" class="h-track"/>
+          <line x1="50" y1="16" x2="50" y2="68" class="h-track"/>
+          <line x1="78" y1="16" x2="78" y2="68" class="h-track"/>
+          <line x1="22" y1="42" x2="78" y2="42" class="h-track"/>
+
+          <circle id="hc1" cx="22" cy="16" r="8" class="h-circle"/>
+          <text id="ht1" x="22" y="16" class="h-text">1</text>
+          <circle id="hc3" cx="50" cy="16" r="8" class="h-circle"/>
+          <text id="ht3" x="50" y="16" class="h-text">3</text>
+          <circle id="hc5" cx="78" cy="16" r="8" class="h-circle"/>
+          <text id="ht5" x="78" y="16" class="h-text">5</text>
+
+          <circle id="hc0" cx="50" cy="42" r="10" class="h-circle" style="fill:#00e676"/>
+          <text id="ht0" x="50" y="42" class="h-text" style="fill:#000">N</text>
+
+          <circle id="hc2" cx="22" cy="68" r="8" class="h-circle"/>
+          <text id="ht2" x="22" y="68" class="h-text">2</text>
+          <circle id="hc4" cx="50" cy="68" r="8" class="h-circle"/>
+          <text id="ht4" x="50" y="68" class="h-text">4</text>
+          <circle id="hc6" cx="78" cy="68" r="8" class="h-circle"/>
+          <text id="ht6" x="78" y="68" class="h-text">R</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- ปุ่มควบคุมด้านล่าง -->
+  <div class="controls">
+    <button id="bleBtn" class="btn btn-ble" onclick="toggleBLE()">เชื่อมต่อ ESP32 (Bluetooth)</button>
+    <button id="demoBtn" class="btn btn-demo" onclick="toggleDemo()">จำลองขับ</button>
+    <button class="btn" onclick="toggleFullscreen()">เต็มจอ</button>
+  </div>
+
+  <!-- แถบแสดงสถานะและแจ้งเตือนปัญหา BLE -->
+  <div id="bleStatus" class="status-bar">สถานะ: พร้อมเชื่อมต่อ (เปิด Bluetooth + Location ก่อนกดเชื่อมต่อ)</div>
+
+  <script>
+    const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+    const CHAR_UUID    = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+    const gears = ["N", "1", "2", "3", "4", "5", "R"];
+    const ARC_LEN = 339.3;
+
+    let bleDevice = null;
+    let isConnected = false;
+    let demoTimer = null;
+    let maxSpeed = 0;
+    let gpsTimeLocked = false;
+
+    function setStatus(msg, type) {
+      const el = document.getElementById('bleStatus');
+      el.innerText = msg;
+      el.className = 'status-bar' + (type ? ' ' + type : '');
+    }
+
+    // ตรวจสอบความพร้อมของ Web Bluetooth ทันทีที่เปิดหน้าเว็บ
+    window.addEventListener('DOMContentLoaded', () => {
+      if (!navigator.bluetooth) {
+        setStatus("คำเตือน: เบราว์เซอร์นี้ไม่รองรับ Bluetooth (กรุณาเปิดผ่าน Google Chrome บน Android หรือแอป Bluefy บน iOS)", "err");
+      }
+    });
+
+    // นาฬิกาสำรองจากมือถือระหว่างรอ GPS ล็อกดาวเทียม
+    setInterval(() => {
+      if (!gpsTimeLocked) {
+        const now = new Date();
+        document.getElementById('dateTxt').innerText =
+          String(now.getDate()).padStart(2, '0') + '/' +
+          String(now.getMonth() + 1).padStart(2, '0') + '/' +
+          now.getFullYear();
+        document.getElementById('timeTxt').innerText =
+          String(now.getHours()).padStart(2, '0') + ':' +
+          String(now.getMinutes()).padStart(2, '0') + ':' +
+          String(now.getSeconds()).padStart(2, '0');
+        document.getElementById('srcTag').innerText = 'SYS';
+      }
+    }, 1000);
+
+    function resetMax() {
+      maxSpeed = 0;
+      document.getElementById('maxVal').innerText = 0;
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    }
+
+    function updateGpsBars(sats) {
+      let bars = 0;
+      if (sats >= 10) bars = 5;
+      else if (sats >= 8) bars = 4;
+      else if (sats >= 6) bars = 3;
+      else if (sats >= 4) bars = 2;
+      else if (sats >= 1) bars = 1;
+
+      const colorCls = (bars >= 3) ? 'green' : (bars >= 1 ? 'amber' : 'red');
+      const colorHex = (bars >= 3) ? 'var(--green)' : (bars >= 1 ? 'var(--amber)' : 'var(--red)');
+
+      const gpsEl = document.getElementById('gpsTxt');
+      gpsEl.innerText = `GPS ${sats}`;
+      gpsEl.style.color = colorHex;
+
+      const barEls = document.querySelectorAll('#sigBars .bar');
+      barEls.forEach((b, i) => {
+        b.className = 'bar';
+        if (i < bars) b.classList.add(colorCls);
+      });
+    }
+
+    function updateRpmDisplay(rpm) {
+      const clamped = Math.max(0, Math.min(5000, rpm));
+      document.getElementById('rpmVal').innerText = rpm;
+
+      const arc = document.getElementById('rpmArc');
+      arc.style.strokeDashoffset = ARC_LEN - (clamped / 5000) * ARC_LEN;
+      arc.style.stroke = (rpm >= 4200) ? 'var(--red)' : (rpm >= 3200 ? 'var(--amber)' : 'var(--cyan)');
+
+      const shiftBar = document.getElementById('shiftBar');
+      const leds = shiftBar.querySelectorAll('.led');
+      const lit = Math.round(Math.max(0, Math.min(1, (rpm - 1000) / 2800)) * 10);
+
+      leds.forEach((led, i) => {
+        led.className = 'led';
+        if (i < lit) {
+          if (i < 4) led.classList.add('g');
+          else if (i < 7) led.classList.add('a');
+          else led.classList.add('r');
+        }
+      });
+
+      if (rpm >= 3800) shiftBar.classList.add('shift-flash');
+      else shiftBar.classList.remove('shift-flash');
+    }
+
+    function renderDashboard(data) {
+      if (data.d && data.d !== "--/--/----" && data.t && data.t !== "--:--:--") {
+        gpsTimeLocked = true;
+        document.getElementById('dateTxt').innerText = data.d;
+        document.getElementById('timeTxt').innerText = data.t;
+        document.getElementById('srcTag').innerText = 'GPS';
+      } else {
+        gpsTimeLocked = false;
+      }
+
+      updateGpsBars(data.sat || 0);
+      updateRpmDisplay(data.r || 0);
+
+      const spd = data.s || 0;
+      document.getElementById('speedVal').innerText = spd;
+      if (spd > maxSpeed) {
+        maxSpeed = spd;
+        document.getElementById('maxVal').innerText = maxSpeed;
+      }
+
+      const calStep = (data.c !== undefined) ? data.c : -1;
+      const gIdx = (data.i !== undefined) ? data.i : 0;
+      const activeNode = (calStep >= 0 && calStep < 7) ? calStep : gIdx;
+
+      const cardEl = document.getElementById('gearCard');
+      const titleEl = document.getElementById('gearTitle');
+      const valEl = document.getElementById('gearVal');
+      const hintEl = document.getElementById('calHint');
+
+      if (calStep >= 0 && calStep < 7) {
+        cardEl.classList.add('cal-active');
+        titleEl.innerText = 'SET GEAR';
+        titleEl.style.color = 'var(--amber)';
+        valEl.innerText = gears[calStep];
+        valEl.style.color = '#fff';
+        hintEl.style.display = 'block';
+      } else {
+        cardEl.classList.remove('cal-active');
+        titleEl.innerText = 'GEAR';
+        titleEl.style.color = 'var(--muted)';
+        valEl.innerText = data.g || gears[gIdx] || 'N';
+        valEl.style.color = (gIdx === 0) ? 'var(--green)' : (gIdx === 6 ? 'var(--red)' : 'var(--cyan)');
+        hintEl.style.display = 'none';
+      }
+
+      for (let i = 0; i < 7; i++) {
+        const c = document.getElementById('hc' + i);
+        const t = document.getElementById('ht' + i);
+        if (i === activeNode) {
+          const fillCol = (i === 0) ? '#00e676' : (i === 6 ? '#ff2a55' : '#00d8ff');
+          c.setAttribute('r', '10');
+          c.style.fill = fillCol;
+          t.style.fill = (i === 6) ? '#fff' : '#000';
+        } else {
+          c.setAttribute('r', '7.5');
+          c.style.fill = '#1c2230';
+          t.style.fill = '#7b849b';
+        }
+      }
+    }
+
+    async function toggleBLE() {
+      if (!navigator.bluetooth) {
+        setStatus("ไม่รองรับ Web Bluetooth: กรุณาเปิดผ่าน Chrome (Android) หรือ Bluefy (iPhone)", "err");
+        alert("เบราว์เซอร์นี้ไม่รองรับ Bluetooth\n- Android: เปิดด้วย Google Chrome\n- iPhone: เปิดด้วยแอป Bluefy");
+        return;
+      }
+
+      if (isConnected && bleDevice) {
+        bleDevice.gatt.disconnect();
+        return;
+      }
+
+      if (demoTimer) toggleDemo();
+
+      try {
+        setStatus("กำลังเปิดหน้าต่างค้นหาอุปกรณ์ Bluetooth... กรุณาเลือก MT-Gear-BLE", "");
+        bleDevice = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: [SERVICE_UUID]
+        });
+
+        setStatus("กำลังเชื่อมต่อกับ " + (bleDevice.name || "ESP32") + "...", "");
+        bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
+
+        const server = await bleDevice.gatt.connect();
+        const service = await server.getPrimaryService(SERVICE_UUID);
+        const char = await service.getCharacteristic(CHAR_UUID);
+
+        await char.startNotifications();
+        char.addEventListener('characteristicvaluechanged', (e) => {
+          const str = new TextDecoder('utf-8').decode(e.target.value).trim();
+          try {
+            renderDashboard(JSON.parse(str));
+          } catch (err) {}
+        });
+
+        isConnected = true;
+        const btn = document.getElementById('bleBtn');
+        btn.innerText = 'เชื่อมต่อแล้ว (' + (bleDevice.name || 'MT-Gear-BLE') + ')';
+        btn.classList.add('connected');
+        setStatus("เชื่อมต่อสำเร็จ: รับข้อมูลสดจาก ESP32 เรียบร้อย", "ok");
+      } catch (err) {
+        if (err.name === 'NotFoundError') {
+          setStatus("ยกเลิกการเลือกอุปกรณ์ Bluetooth", "");
+        } else {
+          setStatus("เชื่อมต่อไม่สำเร็จ: " + err.message, "err");
+        }
+      }
+    }
+
+    function onDisconnected() {
+      isConnected = false;
+      gpsTimeLocked = false;
+      const btn = document.getElementById('bleBtn');
+      btn.innerText = 'เชื่อมต่อ ESP32 (Bluetooth)';
+      btn.classList.remove('connected');
+      updateGpsBars(0);
+      setStatus("ตัดการเชื่อมต่อ Bluetooth แล้ว", "err");
+    }
+
+    function toggleDemo() {
+      const btn = document.getElementById('demoBtn');
+      if (demoTimer) {
+        clearInterval(demoTimer);
+        demoTimer = null;
+        btn.classList.remove('active');
+        btn.innerText = 'จำลองขับ';
+        renderDashboard({ g: 'N', i: 0, s: 0, r: 0, sat: 0, c: -1 });
+        setStatus("ปิดโหมดจำลองแล้ว", "");
+        return;
+      }
+      if (isConnected) return;
+
+      btn.classList.add('active');
+      btn.innerText = 'หยุดจำลอง';
+      setStatus("กำลังทำงานในโหมดจำลองขับ", "");
+      let t = 0;
+      demoTimer = setInterval(() => {
+        t += 0.12;
+        const seq = [1, 2, 3, 4, 5];
+        const idx = Math.floor(t / 4) % seq.length;
+        const g = seq[idx];
+        const phase = (t % 4) / 4;
+        renderDashboard({
+          g: String(g),
+          i: g,
+          s: Math.round((idx * 22) + phase * 24),
+          r: Math.round(1400 + phase * 2600),
+          sat: 9,
+          c: -1
+        });
+      }, 100);
+    }
+  </script>
+</body>
+</html>
